@@ -400,8 +400,7 @@ torch::Tensor bitmask_cuda(
 torch::Tensor matmul_cuda(
     const torch::Tensor input,
     const torch::Tensor weights,
-    int bit_mask_man, int exp_bits, int chunk_size = 16, int exp_bias = 0){
-    bool uf = true;
+    int bit_mask_man, int exp_bits, int chunk_size = 16, int exp_bias = 0, bool, uf = true){
     float clamp_prod_OF;
     float clamp_prod_UF;
     float clamp_acc_OF;

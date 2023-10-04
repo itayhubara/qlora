@@ -200,6 +200,10 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         default=True,
         metadata={"help": "Compress the quantization statistics through double quantization."}
     )
+    no_uf_substeps: int = field(
+        default=0,
+        metadata={"help": "Number of no-underflow training substeps."}
+    )
     quant_type: str = field(
         default="nf4",
         metadata={"help": "Quantization data type to use. Should be one of `fp4` or `nf4`."}
@@ -721,7 +725,7 @@ def get_last_checkpoint(checkpoint_dir):
 
 class LBA_Matmul(torch.nn.Module):
     #def __init__(self, man=10, exp=5, chunk_size=16, mode=0, exp_bias=-3, amode=0, eta=1e-8, split=1):
-    def __init__(self, man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, amode=0, eta=1e-8, split=1):
+    def __init__(self, man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, amode=0, uf= True  , eta=1e-8, split=1):
         super(LBA_Matmul, self).__init__()
         self.man=man
         self.bit_mask_man = calc_bit_mask(man)
@@ -731,11 +735,13 @@ class LBA_Matmul(torch.nn.Module):
         self.exp_bias=exp_bias
         self.amode=amode
         self.eta=eta
+        self.uf = uf
         self.split=split
 
     def forward(self, input1,input2):
         
-        output = lba_bmm(input1,input2,bit_mask_man=self.bit_mask_man, exp=self.exp, chunk_size=self.chunk_size, mode=self.mode, exp_bias=self.exp_bias, amode=self.amode, eta=self.eta, ways=self.split)
+        output = lba_bmm(input1,input2,bit_mask_man=self.bit_mask_man, exp=self.exp, chunk_size=self.chunk_size, 
+                         mode=self.mode, exp_bias=self.exp_bias, amode=self.amode, eta=self.eta, uf=self.uf or not self.training, ways=self.split)
 
         return output
 
@@ -836,13 +842,13 @@ def qllama_attention_forward(self,
 
         return attn_output, attn_weights, past_key_value
     
-def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, amode=0, eta=1e-8, split=1):
+def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, amode=0, eta=1e-8, uf = True, split=1):
     for name, module in model.named_children():
         if isinstance(module,torch.nn.Linear) and hasattr(module,'lora_A'):
 
             #Lora A
             lbaLinearA = LBA_Linear(module.lora_A['default'].in_features, module.lora_A['default'].out_features, bias= module.lora_A['default'].bias is not None,
-                                 man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, split=split) 
+                                 man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split) 
             lbaLinearA.weight.data = module.lora_A['default'].weight.data.clone()
             if module.lora_A['default'].bias is not None:
                  lbaLinearA.bias.data = module.lora_A['default'].bias.data.clone()
@@ -850,7 +856,7 @@ def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, 
             setattr(module, 'lora_A', torch.nn.ModuleDict({'default': lbaLinearA}))
             #Lora B
             lbaLinearB = LBA_Linear(module.lora_B['default'].in_features, module.lora_B['default'].out_features, bias= module.lora_B['default'].bias is not None,
-                                    man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, split=split) 
+                                    man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split) 
             lbaLinearB.weight.data = module.lora_B['default'].weight.data.clone()
             if module.lora_B['default'].bias is not None:
                  lbaLinearB.bias.data = module.lora_B['default'].bias.data.clone()
@@ -860,12 +866,23 @@ def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, 
         elif isinstance(module,transformers.models.llama.modeling_llama.LlamaAttention):
          
             bound_method = qllama_attention_forward.__get__(module, module.__class__)
-            module.qkMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, split=split)
-            module.kvMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, split=split)
+            module.qkMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split)
+            module.kvMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split)
             setattr(module, 'forward', bound_method)
                       
         else:
-            replace_lora_for_lba(module,man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, split=split)
+            replace_lora_for_lba(module,man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta,  uf =uf, split=split)
+
+
+def set_uf(model, uf):
+    for name, module in model.named_children():
+        if isinstance(module,LBA_Linear):
+            module.uf = uf
+        elif isinstance(module,transformers.models.llama.modeling_llama.LlamaAttention):
+            module.qkMatmul.uf = uf
+            module.kvMatmul.uf = uf
+        else:
+            set_uf(module, uf =uf)
 
 def train():
     hfparser = transformers.HfArgumentParser((
@@ -887,7 +904,10 @@ def train():
     model.config.use_cache = False
     print('Replace adapter to lba version.')
     print('####',args.man)
-    replace_lora_for_lba(model,man=args.man, exp=args.exp, chunk_size=args.chunk_size, mode=args.mode, exp_bias=args.exp_bias, amode=args.amode, eta=args.eta, split=args.split)
+    replace_lora_for_lba(model,man=args.man, exp=args.exp, chunk_size=args.chunk_size, mode=args.mode, exp_bias=args.exp_bias, 
+                         amode=args.amode, eta=args.eta, split=args.split, uf = training_args.no_uf_substeps==0)
+    
+    
     print_trainable_parameters(args, model)
     
     print('loaded model')
@@ -966,7 +986,17 @@ def train():
                 trainer.log(results)
                 trainer.data_collator.source_max_len = source_max_len
 
+        class SetLBAStageCallback(transformers.TrainerCallback):
+            def on_step_end(self, args, state, control, model, **kwargs):
+
+                if state.global_step == args.no_uf_substeps:
+                    set_uf(model, True)
+
+
         trainer.add_callback(MMLUEvalCallback)
+        if training_args.no_uf_substeps > 0:
+            trainer.add_callback(SetLBAStageCallback)
+
 
     # Verifying the datatypes and parameter counts before training.
     print_trainable_parameters(args, model)

@@ -27,7 +27,7 @@ def calc_bit_mask(n):
 
 class lba_matmul(Function):
     @staticmethod
-    def forward(ctx, x, w, bit_mask_man, exp, chunk_size, mode, exp_bias, amode, eta, log=None):
+    def forward(ctx, x, w, bit_mask_man, exp, chunk_size, mode, exp_bias, amode, eta, uf, log=None):
         
         
         ctx.save_for_backward(x, w)
@@ -38,7 +38,7 @@ class lba_matmul(Function):
         else:
             ctx.saved_params = (bit_mask_man, exp, chunk_size, mode, exp_bias, amode, eta, log)
             #print('####',x.type(),w.type())
-            return lba_fc_op.matmul(x.contiguous(), w.contiguous(), bit_mask_man, exp, chunk_size, exp_bias)
+            return lba_fc_op.matmul(x.contiguous(), w.contiguous(), bit_mask_man, exp, chunk_size, exp_bias, uf)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -125,7 +125,7 @@ class lba_matmul(Function):
         return x_grad, w_grad, None, None, None, None, None, None, None, None, None
 
 
-def lba_bmm(X,Y ,bit_mask_man, exp, chunk_size, mode, exp_bias, amode, eta, ways=1):
+def lba_bmm(X,Y ,bit_mask_man, exp, chunk_size, mode, exp_bias, amode, eta, uf = True, ways=1):
     ## X [b0 b1 d0 d1]
     ## Y [b0 b1 d2 d1]
     #breakpoint()
@@ -156,7 +156,8 @@ def lba_bmm(X,Y ,bit_mask_man, exp, chunk_size, mode, exp_bias, amode, eta, ways
                                                            mode, 
                                                            exp_bias, 
                                                            amode,
-                                                           eta)
+                                                           eta,
+                                                           uf)
                 start = end
 
     return out
@@ -169,7 +170,7 @@ class LBA_Linear(torch.nn.Linear):
 
     counter = 0
 
-    def __init__(self, in_features, out_features, man, exp, chunk_size, mode, exp_bias, amode, eta, split , bias,  **kwargs):
+    def __init__(self, in_features, out_features, man, exp, chunk_size, mode, exp_bias, amode, eta, split, uf , bias,  **kwargs):
 
         self.bit_mask_man = calc_bit_mask(man)
 
@@ -186,8 +187,9 @@ class LBA_Linear(torch.nn.Linear):
         self.iterations_counter = 0
         self.amode = amode
         self.eta = eta
+        self.uf = uf
 
-        print(f"{self.label}: ({self.iterations_counter})   in_features: {in_features}, out_features: {out_features}, M{man}E{exp}, chunk = {chunk_size}, mode = {mode}, exp_bias = {exp_bias}, bias = {bias}, split = {split}")
+        print(f"{self.label}: ({self.iterations_counter})   in_features: {in_features}, out_features: {out_features}, M{man}E{exp}, chunk = {chunk_size}, mode = {mode}, exp_bias = {exp_bias}, bias = {bias}, split = {split}, amode = {amode}, eta = {eta}, uf = {uf}")
         
         self.quant_enabled = True
         self.unit_scaling = False
@@ -272,10 +274,11 @@ class LBA_Linear(torch.nn.Linear):
         start = 0
         per_instance = dout // self.split
         assert(dout % self.split == 0)
-        if (x.device.index == 0): ## and self.iterations_counter % 100 == 0):
-            label = self.label
-        else:
-            label = None
+        # if (x.device.index == 0): ## and self.iterations_counter % 100 == 0):
+        #     label = self.label
+        # else:
+        
+        label = None
 
         for _ in range(self.split):
             end = start + per_instance
@@ -286,6 +289,7 @@ class LBA_Linear(torch.nn.Linear):
                                  self.exp_bias, 
                                  self.amode,
                                  self.eta,
+                                 self.uf and self.training,
                                  label)
             X.append(y)
             start = end

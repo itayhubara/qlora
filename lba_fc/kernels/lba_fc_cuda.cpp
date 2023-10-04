@@ -15,7 +15,7 @@ torch::Tensor matmul_cuda_alphas(
 
 torch::Tensor matmul_cuda(
     torch::Tensor input,
-    torch::Tensor weights, int bit_mask_man, int exp_bits, int chunk_size, int exp_bias);
+    torch::Tensor weights, int bit_mask_man, int exp_bits, int chunk_size, int exp_bias, bool uf);
 
 //    torch::Tensor weights,  torch::Tensor weights output, int bit_mask_man, int exp_bits, int chunk_size);
 
@@ -40,7 +40,7 @@ torch::Tensor matmul_alphas(
 
 torch::Tensor matmul(
     const torch::Tensor input,
-    const torch::Tensor weights, int bit_mask_man, int exp_bits, int chunk_size, int exp_bias){
+    const torch::Tensor weights, int bit_mask_man, int exp_bits, int chunk_size, int exp_bias, bool uf){
   CHECK_INPUT(input);
   CHECK_INPUT(weights);
   
@@ -49,7 +49,7 @@ torch::Tensor matmul(
 
   const at::cuda::OptionalCUDAGuard device_guard(device_of(input));
 
-  return matmul_cuda(input, weights, bit_mask_man, exp_bits, chunk_size, exp_bias);
+  return matmul_cuda(input, weights, bit_mask_man, exp_bits, chunk_size, exp_bias, uf);
 }
 
 
