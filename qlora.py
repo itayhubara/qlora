@@ -200,7 +200,7 @@ class TrainingArguments(transformers.Seq2SeqTrainingArguments):
         default=True,
         metadata={"help": "Compress the quantization statistics through double quantization."}
     )
-    no_uf_substeps: int = field(
+    steps_wo_uf: int = field(
         default=0,
         metadata={"help": "Number of no-underflow training substeps."}
     )
@@ -882,7 +882,6 @@ def set_uf(model, uf):
         elif isinstance(module,transformers.models.llama.modeling_llama.LlamaAttention):
             print("setting uf for ", name, "/qkMatmul from ", module.qkMatmul.uf, " to ", uf)
             print("setting uf for ", name, "/kvMatmul from ", module.kvMatmul.uf, " to ", uf)
-
             module.qkMatmul.uf = uf
             module.kvMatmul.uf = uf
         else:
@@ -909,7 +908,7 @@ def train():
     print('Replace adapter to lba version.')
     print('####',args.man)
     replace_lora_for_lba(model,man=args.man, exp=args.exp, chunk_size=args.chunk_size, mode=args.mode, exp_bias=args.exp_bias, 
-                         amode=args.amode, eta=args.eta, split=args.split, uf = training_args.no_uf_substeps==0)
+                         amode=args.amode, eta=args.eta, split=args.split, uf = training_args.steps_wo_uf==0)
     
     
     print_trainable_parameters(args, model)
@@ -991,14 +990,16 @@ def train():
                 trainer.data_collator.source_max_len = source_max_len
 
         class SetLBAStageCallback(transformers.TrainerCallback):
-            def on_step_end(self, args, state, control, model, **kwargs):
-
-                if state.global_step == args.no_uf_substeps:
+            def on_step_end(self, args, state, control, model, optimizer, **kwargs):
+                if state.global_step == args.steps_wo_uf:
                     set_uf(model, True)
+                    ## decrease the learning rate by 10:
+                    for param_group in optimizer.param_groups:
+                        param_group['lr'] = param_group['lr']/10.0
 
 
         trainer.add_callback(MMLUEvalCallback)
-        if training_args.no_uf_substeps > 0:
+        if training_args.steps_wo_uf > 0:
             trainer.add_callback(SetLBAStageCallback)
 
 
