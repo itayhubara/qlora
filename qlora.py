@@ -877,8 +877,12 @@ def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, 
 def set_uf(model, uf):
     for name, module in model.named_children():
         if isinstance(module,LBA_Linear):
+            print("setting uf for ", name, " from ", module.uf, " to ", uf)
             module.uf = uf
         elif isinstance(module,transformers.models.llama.modeling_llama.LlamaAttention):
+            print("setting uf for ", name, "/qkMatmul from ", module.qkMatmul.uf, " to ", uf)
+            print("setting uf for ", name, "/kvMatmul from ", module.kvMatmul.uf, " to ", uf)
+
             module.qkMatmul.uf = uf
             module.kvMatmul.uf = uf
         else:
