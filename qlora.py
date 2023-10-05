@@ -121,6 +121,10 @@ class ModelArguments:
     split: int = field(
         default=1,
         metadata={"help": "LBA split)."},
+    )
+    dynamic_exp_bias: bool = field(
+        default=False,
+        metadata={"help": "LBA dynamic_exp_bias)."},
     )                
 
 @dataclass
@@ -725,7 +729,7 @@ def get_last_checkpoint(checkpoint_dir):
 
 class LBA_Matmul(torch.nn.Module):
     #def __init__(self, man=10, exp=5, chunk_size=16, mode=0, exp_bias=-3, amode=0, eta=1e-8, split=1):
-    def __init__(self, man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, amode=0, uf= True  , eta=1e-8, split=1):
+    def __init__(self, man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, amode=0, uf= True  , eta=1e-8, split=1, dynamic_exp_bias = False):
         super(LBA_Matmul, self).__init__()
         self.man=man
         self.bit_mask_man = calc_bit_mask(man)
@@ -737,11 +741,25 @@ class LBA_Matmul(torch.nn.Module):
         self.eta=eta
         self.uf = uf
         self.split=split
+        self.dynamic_exp_bias = dynamic_exp_bias
+        self.new_exp_bias = exp_bias
+
 
     def forward(self, input1,input2):
-        
+        if self.dynamic_exp_bias and self.training:
+            self.exp_bias = self.new_exp_bias
+
+
         output = lba_bmm(input1,input2,bit_mask_man=self.bit_mask_man, exp=self.exp, chunk_size=self.chunk_size, 
                          mode=self.mode, exp_bias=self.exp_bias, amode=self.amode, eta=self.eta, uf=self.uf or not self.training, ways=self.split)
+
+        if self.dynamic_exp_bias and self.training:
+
+            max_exp = output.abs().max().log2().ceil()
+            self.new_exp_bias = max_exp - 2**(self.exp-1)
+
+            if not self.uf:
+                 self.new_exp_bias = self.new_exp_bias + 1
 
         return output
 
@@ -842,13 +860,13 @@ def qllama_attention_forward(self,
 
         return attn_output, attn_weights, past_key_value
     
-def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, amode=0, eta=1e-8, uf = True, split=1):
+def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, amode=0, eta=1e-8, uf = True, dynamic_exp_bias = False, split=1):
     for name, module in model.named_children():
         if isinstance(module,torch.nn.Linear) and hasattr(module,'lora_A'):
 
             #Lora A
             lbaLinearA = LBA_Linear(module.lora_A['default'].in_features, module.lora_A['default'].out_features, bias= module.lora_A['default'].bias is not None,
-                                 man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split) 
+                                 man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias) 
             lbaLinearA.weight.data = module.lora_A['default'].weight.data.clone()
             if module.lora_A['default'].bias is not None:
                  lbaLinearA.bias.data = module.lora_A['default'].bias.data.clone()
@@ -856,7 +874,7 @@ def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, 
             setattr(module, 'lora_A', torch.nn.ModuleDict({'default': lbaLinearA}))
             #Lora B
             lbaLinearB = LBA_Linear(module.lora_B['default'].in_features, module.lora_B['default'].out_features, bias= module.lora_B['default'].bias is not None,
-                                    man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split) 
+                                    man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias) 
             lbaLinearB.weight.data = module.lora_B['default'].weight.data.clone()
             if module.lora_B['default'].bias is not None:
                  lbaLinearB.bias.data = module.lora_B['default'].bias.data.clone()
@@ -866,12 +884,12 @@ def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, 
         elif isinstance(module,transformers.models.llama.modeling_llama.LlamaAttention):
          
             bound_method = qllama_attention_forward.__get__(module, module.__class__)
-            module.qkMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split)
-            module.kvMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split)
+            module.qkMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias)
+            module.kvMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias)
             setattr(module, 'forward', bound_method)
                       
         else:
-            replace_lora_for_lba(module,man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta,  uf =uf, split=split)
+            replace_lora_for_lba(module,man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta,  uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias)
 
 
 def set_uf(model, uf):
@@ -908,7 +926,7 @@ def train():
     print('Replace adapter to lba version.')
     print('####',args.man)
     replace_lora_for_lba(model,man=args.man, exp=args.exp, chunk_size=args.chunk_size, mode=args.mode, exp_bias=args.exp_bias, 
-                         amode=args.amode, eta=args.eta, split=args.split, uf = training_args.steps_wo_uf==0)
+                         amode=args.amode, eta=args.eta, split=args.split, uf = training_args.steps_wo_uf==0, dynamic_exp_bias = args.dynamic_exp_bias)
     
     
     print_trainable_parameters(args, model)

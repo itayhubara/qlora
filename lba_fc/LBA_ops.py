@@ -170,7 +170,7 @@ class LBA_Linear(torch.nn.Linear):
 
     counter = 0
 
-    def __init__(self, in_features, out_features, man, exp, chunk_size, mode, exp_bias, amode, eta, split, uf , bias,  **kwargs):
+    def __init__(self, in_features, out_features, man, exp, chunk_size, mode, exp_bias, amode, eta, split, uf , bias, dynamic_exp_bias ,  **kwargs):
 
         self.bit_mask_man = calc_bit_mask(man)
 
@@ -188,6 +188,8 @@ class LBA_Linear(torch.nn.Linear):
         self.amode = amode
         self.eta = eta
         self.uf = uf
+        self.dynamic_exp_bias = dynamic_exp_bias
+        self.new_exp_bias = exp_bias
 
         print(f"{self.label}: ({self.iterations_counter})   in_features: {in_features}, out_features: {out_features}, M{man}E{exp}, chunk = {chunk_size}, mode = {mode}, exp_bias = {exp_bias}, bias = {bias}, split = {split}, amode = {amode}, eta = {eta}, uf = {uf}")
         
@@ -231,7 +233,8 @@ class LBA_Linear(torch.nn.Linear):
         w = self.weight 
         bias = self.bias 
 
-        self.iterations_counter = (self.iterations_counter+1)*2
+        if self.dynamic_exp_bias and self.training:
+            self.exp_bias = self.new_exp_bias
 
 
         if self.unit_scaling:
@@ -289,7 +292,7 @@ class LBA_Linear(torch.nn.Linear):
                                  self.exp_bias, 
                                  self.amode,
                                  self.eta,
-                                 self.uf and self.training,
+                                 self.uf or not self.training,
                                  label)
             X.append(y)
             start = end
@@ -301,6 +304,15 @@ class LBA_Linear(torch.nn.Linear):
 
         if need_squeeze:
             x = x.squeeze(1)
+
+        if self.dynamic_exp_bias and self.training:
+
+            max_exp = x.abs().max().log2().ceil()
+            self.new_exp_bias = max_exp - 2**(self.exp-1)
+
+            if not self.uf:
+                 self.new_exp_bias = self.new_exp_bias + 1
+
 
         if self.has_bias:
             x = x + self.bias
