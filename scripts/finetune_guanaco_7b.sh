@@ -1,7 +1,7 @@
 python qlora.py \
     --model_name_or_path huggyllama/llama-7b \
     --output_dir ./output/guanaco-7b \
-    --logging_steps 10 \
+    --logging_steps 1 \
     --save_strategy steps \
     --data_seed 42 \
     --save_steps 500 \
@@ -23,7 +23,6 @@ python qlora.py \
     --lora_modules all \
     --double_quant \
     --quant_type nf4 \
-    --bf16 \
     --bits 4 \
     --warmup_ratio 0.03 \
     --lr_scheduler_type constant \
@@ -40,4 +39,14 @@ python qlora.py \
     --max_grad_norm 0.3 \
     --lora_dropout 0.1 \
     --weight_decay 0.0 \
-    --seed 0
+    --seed 0 \
+    --man -1 \
+    --exp -1 \
+    --chunk_size 16 \
+    --mode 0 \
+    --exp_bias 2 \
+    --amode 0 \
+    --eta 1e-8 \
+    --split 1 \
+    --steps_wo_uf 0 \
+    --dynamic_exp_bias False \

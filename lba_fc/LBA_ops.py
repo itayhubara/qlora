@@ -306,9 +306,12 @@ class LBA_Linear(torch.nn.Linear):
             x = x.squeeze(1)
 
         if self.dynamic_exp_bias and self.training:
+            max_exp = x.abs().max().log2().ceil().nan_to_num(0.0)
 
-            max_exp = x.abs().max().log2().ceil()
-            self.new_exp_bias = max_exp - 2**(self.exp-1)
+            self.new_exp_bias = min(max_exp - 2**(self.exp-1), 3 )
+            self.new_exp_bias = max(self.new_exp_bias, -3)
+            
+            ##print(f"max_exp = {max_exp}, exp = {self.exp}, exp_bias = {self.exp_bias},x = {x.abs().max()}, new_exp_bias = {self.new_exp_bias}")
 
             if not self.uf:
                  self.new_exp_bias = self.new_exp_bias + 1
