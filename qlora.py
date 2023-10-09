@@ -46,6 +46,8 @@ from peft.tuners.lora import LoraLayer
 from transformers.trainer_utils import PREFIX_CHECKPOINT_DIR
 from lba_fc.LBA_ops import LBA_Linear,lba_bmm,calc_bit_mask
 
+import wandb
+
 def is_ipex_available():
     def get_major_and_minor_from_version(full_version):
         return str(version.parse(full_version).major) + "." + str(version.parse(full_version).minor)
@@ -728,6 +730,10 @@ def get_last_checkpoint(checkpoint_dir):
     return None, False # first training
 
 class LBA_Matmul(torch.nn.Module):
+
+    counter = 0
+
+
     #def __init__(self, man=10, exp=5, chunk_size=16, mode=0, exp_bias=-3, amode=0, eta=1e-8, split=1):
     def __init__(self, man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, amode=0, uf= True  , eta=1e-8, split=1, dynamic_exp_bias = False):
         super(LBA_Matmul, self).__init__()
@@ -745,21 +751,36 @@ class LBA_Matmul(torch.nn.Module):
         self.new_exp_bias = exp_bias
 
 
+        self.label = f"matmul_{LBA_Matmul.counter}"
+
+        print(f"{self.label}: M{man}E{exp}, chunk = {chunk_size}, mode = {mode}, exp_bias = {exp_bias}, split = {split}, amode = {amode}, eta = {eta}, uf = {uf}")
+
+        LBA_Matmul.counter += 1
+
     def forward(self, input1,input2):
         if self.dynamic_exp_bias and self.training:
-            self.exp_bias = self.new_exp_bias
-
+            ##self.exp_bias = self.new_exp_bias
+            pass
 
         output = lba_bmm(input1,input2,bit_mask_man=self.bit_mask_man, exp=self.exp, chunk_size=self.chunk_size, 
                          mode=self.mode, exp_bias=self.exp_bias, amode=self.amode, eta=self.eta, uf=self.uf or not self.training, ways=self.split)
 
         if self.dynamic_exp_bias and self.training:
 
-            max_exp = output.abs().max().log2().ceil()
+            max_exp = output.abs().max().log2().ceil().nan_to_num(0.0)
             self.new_exp_bias = max_exp - 2**(self.exp-1)
 
-            if not self.uf:
-                 self.new_exp_bias = self.new_exp_bias + 1
+            new_exp_bias_precentile1 = output.abs().lt(2**(max_exp-1)).float().mean().item()
+            new_exp_bias_precentile2 = output.abs().lt(2**(max_exp-2)).float().mean().item()
+            new_exp_bias_precentile3 = output.abs().lt(2**(max_exp-3)).float().mean().item()
+
+            wandb.log({f"{self.label}/max_exp)": max_exp, f"{self.label}/exp_bias_precentile1": new_exp_bias_precentile1, 
+                       f"{self.label}/exp_bias_precentile2": new_exp_bias_precentile2, f"{self.label}/exp_bias_precentile3": new_exp_bias_precentile3},
+                         commit = False)
+
+
+            # if not self.uf:
+            #      self.new_exp_bias = self.new_exp_bias + 1
 
         return output
 

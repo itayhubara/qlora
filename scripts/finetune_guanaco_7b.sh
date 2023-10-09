@@ -1,7 +1,7 @@
 python qlora.py \
     --model_name_or_path huggyllama/llama-7b \
     --output_dir ./output/guanaco-7b \
-    --logging_steps 1 \
+    --logging_steps 10 \
     --save_strategy steps \
     --data_seed 42 \
     --save_steps 500 \

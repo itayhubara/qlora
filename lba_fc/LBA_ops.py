@@ -183,14 +183,14 @@ class LBA_Linear(torch.nn.Linear):
         self.exp_bias = exp_bias
         ## debug message to verify correct initilization
 
-        self.label = f"op{LBA_Linear.counter}"
+        self.label = f"linear_{LBA_Linear.counter}"
         self.iterations_counter = 0
         self.amode = amode
         self.eta = eta
         self.uf = uf
-        self.dynamic_exp_bias = dynamic_exp_bias
-        self.new_exp_bias = exp_bias
 
+        self.new_exp_bias = exp_bias
+        self.dynamic_exp_bias = dynamic_exp_bias
         print(f"{self.label}: ({self.iterations_counter})   in_features: {in_features}, out_features: {out_features}, M{man}E{exp}, chunk = {chunk_size}, mode = {mode}, exp_bias = {exp_bias}, bias = {bias}, split = {split}, amode = {amode}, eta = {eta}, uf = {uf}")
         
         self.quant_enabled = True
@@ -234,7 +234,8 @@ class LBA_Linear(torch.nn.Linear):
         bias = self.bias 
 
         if self.dynamic_exp_bias and self.training:
-            self.exp_bias = self.new_exp_bias
+            ##self.exp_bias = self.new_exp_bias
+            pass
 
 
         if self.unit_scaling:
@@ -308,13 +309,23 @@ class LBA_Linear(torch.nn.Linear):
         if self.dynamic_exp_bias and self.training:
             max_exp = x.abs().max().log2().ceil().nan_to_num(0.0)
 
-            self.new_exp_bias = min(max_exp - 2**(self.exp-1), 3 )
-            self.new_exp_bias = max(self.new_exp_bias, -3)
+            self.new_exp_bias = max_exp - 2**(self.exp-1)
+            
+            new_exp_bias_precentile1 = x.abs().lt(2**(max_exp-1)).float().mean().item()
+            new_exp_bias_precentile2 = x.abs().lt(2**(max_exp-2)).float().mean().item()
+            new_exp_bias_precentile3 = x.abs().lt(2**(max_exp-3)).float().mean().item()
+
+            wandb.log({f"{self.label}/max_exp)": max_exp, f"{self.label}/exp_bias_precentile1": new_exp_bias_precentile1, 
+                       f"{self.label}/exp_bias_precentile2": new_exp_bias_precentile2, f"{self.label}/exp_bias_precentile3": new_exp_bias_precentile3},
+                         commit = False)
+
+            # self.new_exp_bias = min(max_exp - 2**(self.exp-1), 3 )
+            # self.new_exp_bias = max(self.new_exp_bias, -3)
             
             ##print(f"max_exp = {max_exp}, exp = {self.exp}, exp_bias = {self.exp_bias},x = {x.abs().max()}, new_exp_bias = {self.new_exp_bias}")
 
-            if not self.uf:
-                 self.new_exp_bias = self.new_exp_bias + 1
+            # if not self.uf:
+            #      self.new_exp_bias = self.new_exp_bias + 1
 
 
         if self.has_bias:
