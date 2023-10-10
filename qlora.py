@@ -885,9 +885,12 @@ def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, 
     for name, module in model.named_children():
         if isinstance(module,torch.nn.Linear) and hasattr(module,'lora_A'):
 
+
+            exp_bias_loraA = -3
+            exp_bias_loraB = -4
             #Lora A
             lbaLinearA = LBA_Linear(module.lora_A['default'].in_features, module.lora_A['default'].out_features, bias= module.lora_A['default'].bias is not None,
-                                 man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias) 
+                                 man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias_loraA, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias) 
             lbaLinearA.weight.data = module.lora_A['default'].weight.data.clone()
             if module.lora_A['default'].bias is not None:
                  lbaLinearA.bias.data = module.lora_A['default'].bias.data.clone()
@@ -895,7 +898,7 @@ def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, 
             setattr(module, 'lora_A', torch.nn.ModuleDict({'default': lbaLinearA}))
             #Lora B
             lbaLinearB = LBA_Linear(module.lora_B['default'].in_features, module.lora_B['default'].out_features, bias= module.lora_B['default'].bias is not None,
-                                    man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias) 
+                                    man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias_loraB, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias) 
             lbaLinearB.weight.data = module.lora_B['default'].weight.data.clone()
             if module.lora_B['default'].bias is not None:
                  lbaLinearB.bias.data = module.lora_B['default'].bias.data.clone()
@@ -905,8 +908,13 @@ def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=2, 
         elif isinstance(module,transformers.models.llama.modeling_llama.LlamaAttention):
          
             bound_method = qllama_attention_forward.__get__(module, module.__class__)
-            module.qkMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias)
-            module.kvMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias)
+
+            exp_bias_qk= 3
+            exp_bias_kv= -2
+
+
+            module.qkMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias_qk, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias)
+            module.kvMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias_kv, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias)
             setattr(module, 'forward', bound_method)
                       
         else:

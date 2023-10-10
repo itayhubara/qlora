@@ -50,3 +50,6 @@ python qlora.py \
     --eta 1e-8 \
     --split 1 \
     --steps_wo_uf 256 \
+    --steps_wo_uf 256 \
+    --dynamic_exp_bias False \
+    --report_to wandb \
