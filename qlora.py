@@ -886,8 +886,8 @@ def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=0, 
         if isinstance(module,torch.nn.Linear) and hasattr(module,'lora_A'):
 
 
-            exp_bias_loraA = -3 + exp_bias
-            exp_bias_loraB = -4 + exp_bias
+            exp_bias_loraA = -5 + exp_bias
+            exp_bias_loraB = -6 + exp_bias
             #Lora A
             lbaLinearA = LBA_Linear(module.lora_A['default'].in_features, module.lora_A['default'].out_features, bias= module.lora_A['default'].bias is not None,
                                  man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias_loraA, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias) 
@@ -909,8 +909,8 @@ def replace_lora_for_lba(model,man=7, exp=4, chunk_size=16, mode=0, exp_bias=0, 
          
             bound_method = qllama_attention_forward.__get__(module, module.__class__)
 
-            exp_bias_qk= 3 + exp_bias
-            exp_bias_kv= -2 + exp_bias
+            exp_bias_qk= 2 + exp_bias
+            exp_bias_kv= -4 + exp_bias
 
 
             module.qkMatmul = LBA_Matmul(man=man, exp=exp, chunk_size=chunk_size, mode=mode, exp_bias=exp_bias_qk, amode=amode, eta=eta, uf =uf, split=split, dynamic_exp_bias = dynamic_exp_bias)
