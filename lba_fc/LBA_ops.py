@@ -234,8 +234,8 @@ class LBA_Linear(torch.nn.Linear):
         bias = self.bias 
 
         if self.dynamic_exp_bias and self.training:
-            ##self.exp_bias = self.new_exp_bias
-            pass
+            self.exp_bias = self.new_exp_bias
+            ##pass
 
 
         if self.unit_scaling:
@@ -307,10 +307,13 @@ class LBA_Linear(torch.nn.Linear):
             x = x.squeeze(1)
 
         if self.dynamic_exp_bias and self.training:
-            max_exp = x.abs().max().log2().ceil().nan_to_num(0.0)
-
+            max_exp = x.abs().max().log2().ceil().nan_to_num(0.0).item()
+            max_exp = int(max_exp)
             self.new_exp_bias = max_exp - 2**(self.exp-1)
             
+            self.new_exp_bias = max(self.new_exp_bias, -5)
+            self.new_exp_bias = min(self.new_exp_bias, 4)
+
             new_exp_bias_precentile1 = x.abs().lt(2**(max_exp-1)).float().mean().item()
             new_exp_bias_precentile2 = x.abs().lt(2**(max_exp-2)).float().mean().item()
             new_exp_bias_precentile3 = x.abs().lt(2**(max_exp-3)).float().mean().item()
@@ -324,8 +327,8 @@ class LBA_Linear(torch.nn.Linear):
             
             ##print(f"max_exp = {max_exp}, exp = {self.exp}, exp_bias = {self.exp_bias},x = {x.abs().max()}, new_exp_bias = {self.new_exp_bias}")
 
-            # if not self.uf:
-            #      self.new_exp_bias = self.new_exp_bias + 1
+            if not self.uf:
+                 self.new_exp_bias = self.new_exp_bias + 1
 
 
         if self.has_bias:

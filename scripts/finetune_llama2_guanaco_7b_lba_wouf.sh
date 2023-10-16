@@ -1,7 +1,7 @@
 python qlora.py \
     --model_name_or_path meta-llama/Llama-2-7b-hf  \
     --use_auth \
-    --output_dir ./output/llama-2-guanaco-7b_7m4e0eb_yes_uf \
+    --output_dir ./output/llama-2-guanaco-7b_dyn_wouf \
     --logging_steps 10 \
     --save_strategy steps \
     --data_seed 42 \
@@ -49,6 +49,7 @@ python qlora.py \
     --amode 0 \
     --eta 1e-8 \
     --split 1 \
-    --steps_wo_uf 0 \
+    --steps_wo_uf 1500 \
     --report_to wandb \
     --dynamic_exp_bias True \
+

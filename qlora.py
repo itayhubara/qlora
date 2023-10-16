@@ -759,16 +759,22 @@ class LBA_Matmul(torch.nn.Module):
 
     def forward(self, input1,input2):
         if self.dynamic_exp_bias and self.training:
-            ##self.exp_bias = self.new_exp_bias
-            pass
+            self.exp_bias = self.new_exp_bias
 
         output = lba_bmm(input1,input2,bit_mask_man=self.bit_mask_man, exp=self.exp, chunk_size=self.chunk_size, 
                          mode=self.mode, exp_bias=self.exp_bias, amode=self.amode, eta=self.eta, uf=self.uf or not self.training, ways=self.split)
 
         if self.dynamic_exp_bias and self.training:
 
-            max_exp = output.abs().max().log2().ceil().nan_to_num(0.0)
+            max_exp = output.abs().max().log2().ceil().nan_to_num(0.0).item()
+            max_exp = int(max_exp)
+
             self.new_exp_bias = max_exp - 2**(self.exp-1)
+
+
+            self.new_exp_bias = max(self.new_exp_bias, -5)
+            self.new_exp_bias = min(self.new_exp_bias, 4)
+
 
             new_exp_bias_precentile1 = output.abs().lt(2**(max_exp-1)).float().mean().item()
             new_exp_bias_precentile2 = output.abs().lt(2**(max_exp-2)).float().mean().item()
@@ -778,9 +784,8 @@ class LBA_Matmul(torch.nn.Module):
                        f"{self.label}/exp_bias_precentile2": new_exp_bias_precentile2, f"{self.label}/exp_bias_precentile3": new_exp_bias_precentile3},
                          commit = False)
 
-
-            # if not self.uf:
-            #      self.new_exp_bias = self.new_exp_bias + 1
+            if not self.uf:
+                 self.new_exp_bias = self.new_exp_bias + 1
 
         return output
 
