@@ -327,8 +327,8 @@ class LBA_Linear(torch.nn.Linear):
             
             ##print(f"max_exp = {max_exp}, exp = {self.exp}, exp_bias = {self.exp_bias},x = {x.abs().max()}, new_exp_bias = {self.new_exp_bias}")
 
-            if not self.uf:
-                 self.new_exp_bias = self.new_exp_bias + 1
+            
+            self.new_exp_bias = self.new_exp_bias + 1
 
 
         if self.has_bias:

@@ -784,8 +784,8 @@ class LBA_Matmul(torch.nn.Module):
                        f"{self.label}/exp_bias_precentile2": new_exp_bias_precentile2, f"{self.label}/exp_bias_precentile3": new_exp_bias_precentile3},
                          commit = False)
 
-            if not self.uf:
-                 self.new_exp_bias = self.new_exp_bias + 1
+            
+            self.new_exp_bias = self.new_exp_bias + 1
 
         return output
 
