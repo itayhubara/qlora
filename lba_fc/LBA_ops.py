@@ -38,7 +38,7 @@ class lba_matmul(Function):
         else:
             ctx.saved_params = (bit_mask_man, exp, chunk_size, mode, exp_bias, amode, eta, log)
             #print('####',x.type(),w.type())
-            return lba_fc_op.matmul(x.contiguous(), w.contiguous(), bit_mask_man, exp, chunk_size, exp_bias, uf)
+            return lba_fc_op.matmul(x, w, bit_mask_man, exp, chunk_size, exp_bias, uf)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -148,8 +148,8 @@ def lba_bmm(X,Y ,bit_mask_man, exp, chunk_size, mode, exp_bias, amode, eta, uf =
             assert(D2 % ways == 0)
             for _ in range(ways):
                 end = start + per_instance
-                out[b0,b1,:, start:end] = lba_matmul.apply(X[b0,b1:b1+1,:,:], 
-                                                           Y[b0,b1, start:end,:],  
+                out[b0,b1,:, start:end] = lba_matmul.apply(X[b0,b1:b1+1,:,:].contiguous(),
+                                                           Y[b0,b1, start:end,:].contiguous(),  
                                                            bit_mask_man, 
                                                            exp, 
                                                            chunk_size, 
@@ -286,7 +286,7 @@ class LBA_Linear(torch.nn.Linear):
 
         for _ in range(self.split):
             end = start + per_instance
-            y = lba_matmul.apply(x, w[start:end,:],  
+            y = lba_matmul.apply(x.contiguous(), w[start:end,:].contiguous(),  
                                  bit_mask_man, exp, 
                                  self.chunk_size, 
                                  self.mode, 

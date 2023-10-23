@@ -8,7 +8,11 @@ elif [ $# -eq 1 ]; then
 else
     steps_wo_uf=0
     resolution=87
+    shift 2
+    extra=$@
 fi
+
+echo "extra: $extra"
 
 timestamp=$(date +%Y%m%d_%H%M%S)
 
@@ -58,11 +62,10 @@ python qlora.py \
     --man 7 \
     --exp 4 \
     --chunk_size 16 \
-    --mode 0 \
     --exp_bias 5 \
     --amode 0 \
     --eta 1e-8 \
-    --split 1 \
     --steps_wo_uf $steps_wo_uf \
     --report_to wandb \
     --dynamic_exp_bias True \
+    $extra \

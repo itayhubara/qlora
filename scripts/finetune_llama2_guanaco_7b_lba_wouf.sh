@@ -34,7 +34,7 @@ python qlora.py \
     --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 16 \
     --max_steps 1875 \
-    --eval_steps 96 \
+    --eval_steps 375 \
     --learning_rate 0.0002 \
     --adam_beta2 0.999 \
     --max_grad_norm 0.3 \
